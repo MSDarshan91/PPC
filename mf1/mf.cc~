@@ -1,0 +1,32 @@
+#include "mf.h"
+#include <iostream>     
+#include <algorithm>    
+#include <set>
+using namespace std;
+
+void mf(int ny, int nx, int hy, int hx, const float* in, float* out) {
+    int t,b,l,r,index =0;
+    std::multiset<float> mymultiset;
+    std::multiset<float>::iterator it;
+    //float arr[(2*hx+1)*(2*hy+1)];
+    for (int y = 0; y < ny; ++y) 	
+    	for (int x = 0; x < nx; ++x) 
+   	{
+	 	t = max(0,y-hy);
+		b = min(ny-1,y+hy);
+ 		l = max(0,x-hx);
+		r = min(nx-1,x+hx);
+
+		index=0;
+ 	        for(int j=t;j<=b;j++)
+                   for(int i=l;i<=r;i++)
+			mymultiset.insert(in[i+j*nx]);
+		it=mymultiset.begin();	
+		std::advance(it, index/2);
+		if(index%2!=0)
+			out[x + nx*y] = *(++it);
+		else
+			out[x + nx*y] = (*(it)+*(++it))/2.0;
+    	}
+}
+
