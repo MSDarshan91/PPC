@@ -1,7 +1,6 @@
 #include "mf.h"
 #include <iostream>     
 #include <algorithm>    
-#include <set>
 using namespace std;
 
 void mf(int ny, int nx, int hy, int hx, const float* in, float* out) {
