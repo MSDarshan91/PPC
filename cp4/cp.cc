@@ -64,7 +64,7 @@ void correlate(int ny, int nx, const float* data, float* result)
                         inter[x + y*vx] = inter[x + y*vx] / sd;
                 }
         }
-		int s = 4;
+		int s = 10;
 		#pragma omp parallel for schedule(static,1)
      	for(int jj=0;jj<ny;jj+= s)
 		{
@@ -93,4 +93,3 @@ void correlate(int ny, int nx, const float* data, float* result)
 			}
 		}
 }
-
