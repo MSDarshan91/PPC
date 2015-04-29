@@ -17,6 +17,9 @@ Weekly reports:
 Tasks:
 
     mf*/mf.cc
+    cp*/cp.cc
+    is*/is.cc
+    so*/so.cc
 
 
 Quick start
