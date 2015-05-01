@@ -29,6 +29,7 @@ Result segment(int ny, int nx, const float* data) {
 	double4_t VPC = double4_0;
 	double res[10] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
 	double4_t *s= double4_alloc((ny+1)*(nx+1));
+	#pragma omp parallel for 
 	for(int y=0; y<ny; y++)
 		for(int x=0; x<nx; x++)
 		{
@@ -38,31 +39,33 @@ Result segment(int ny, int nx, const float* data) {
 				inter[y*nx+x][c]= data[c + 3 * x + 3 * nx * y];
 				//cout<<data[c + 3 * x + 3 * nx * y]<<" ";
 			}
-			VPC = VPC + inter[y*nx+x];	
-		}
-	//cout<<endl<<"VPC"<<VPC[0]<<" "<<VPC[1]<<" "<<VPC[2]<<endl;
-	
-	for(int y=0; y<=ny; y++)
-		for(int x=0; x<=nx; x++)
-		{
-			if(x == 0 || y == 0)
-				s[y*(nx+1)+(x)] = double4_0;
-			else
-			{
-				s[y*(nx+1)+(x)] = s[(y-1)*(nx+1)+x] +  s[y*(nx+1)+x-1] - s[(y-1)*(nx+1)+x-1] + inter[(y-1)*nx+(x-1)];
-
-				//cout<<"S=="<<s[y*(nx+1)+(x)][0]<<" "<<s[y*(nx+1)+(x)][1]<<" "<<s[y*(nx+1)+(x)][2]<<endl;
-				//cout<<y<<x<<endl;
-			}
 			
 		}
+	//cout<<endl<<"VPC"<<VPC[0]<<" "<<VPC[1]<<" "<<VPC[2]<<endl;
+	for(int y =0;y<=ny;y++)
+		s[y*(nx+1)] = double4_0;
+	for(int x=0; x<=nx; x++)
+		 s[x]= double4_0;
+	for(int y=1; y<=ny; y++)
+		for(int x=1; x<=nx; x++)
+		{
+				s[y*(nx+1)+(x)] = s[(y-1)*(nx+1)+x] +  s[y*(nx+1)+x-1] - s[(y-1)*(nx+1)+x-1] + inter[(y-1)*nx+(x-1)];
+				VPC = VPC + inter[(y-1)*nx+(x-1)];
+		}
 	int opt_x0_t[10],opt_y0_t[10],opt_x1_t[10],opt_y1_t[10];
-	#pragma omp parallel for schedule(static,1)
+	#pragma omp parallel for schedule(static,10)
 	for(int hy = 1;hy <= ny;hy++)
 		for(int wx = 1;wx <=nx;wx++)
 		{
-			int X = wx*hy;
-			int Y = (nx*ny) - X;
+			int t1 = wx*hy;
+			int t2 = (nx*ny);
+			double X = 1.0/t1;
+			double Y = 1.0;
+			if(t1< t2)
+			{
+				Y = 1.0/(t2-t1);
+				asm ("#dummy");
+			}
 			for(int y0 = 0;y0 < ny-hy+1;y0++)
 				for(int x0 = 0;x0 < nx-wx+1;x0++)
 				{
@@ -70,18 +73,12 @@ Result segment(int ny, int nx, const float* data) {
 					int y1 = y0 + hy;
 					double4_t VXC = double4_0;
 					VXC = s[(y1*(nx+1))+(x1)]+ s[(y0*(nx+1))+(x0)] - s[(y0*(nx+1))+(x1)] - s[(y1*(nx+1))+(x0)];
-						
+					//cout<<"X=="<<X<<" "<<Y<<endl;	
 					//cout<<"VXC=="<<VXC[0]<<" "<<VXC[1]<<" "<<VXC[2]<<endl;
-					double4_t temp = ((VXC*VXC)/X);
-					if(((nx*ny) - X) > 0)
-						temp+= ((VPC - VXC) * (VPC - VXC))/ (Y); 
-					//cout<<"VXC===="<<(VXC[0]*VXC[0])/X<<" "<<((VPC[0] - VXC[0]) * (VPC[0] - VXC[0]) )/ ((nx*ny) - X)<<endl;
-					double t =0.0;
-					for(int i = 0;i<3;i++)
-					{
-						////cout<<"t==" << t<<"+" <<temp[i];
-						t+=temp[i];
-					}
+					double4_t temp = ((VXC*VXC)*X) +(((VPC - VXC) * (VPC - VXC))* (Y)); 
+
+					//cout<<"VXC===="<<(VXC[0]*VXC[0])*X<<" "<<((VPC[0] - VXC[0]) * (VPC[0] - VXC[0]) )*Y<<endl;
+					double t =temp[0]+temp[1]+temp[2];
 					//cout<<endl<<"Test=="<<x0<<" "<<y0<<" "<<x1<<" "<<y1<<" "<<t<<endl;
 					int i = omp_get_thread_num(); 
 					if( t > res[i] )
