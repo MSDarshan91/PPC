@@ -70,12 +70,15 @@ We will assume the following:
 
  - Operating system: Linux or Mac OS X.
 
- - Compiler: GCC version 4.9 or 4.8, somewhere in the path,
-   with the name `g++-4.9`, `g++-4.8`, or `g++`.
+ - Compiler: GCC version 5.1, 4.9, or 4.8, somewhere in the path,
+   with the name `g++-5.1`, `g++-5`, `g++-4.9`, `g++-4.8`, or `g++`.
 
  - Libraries: libpng installed in a location where GCC can find it.
 
 For assembly output, you also need `objdump` and `c++filt`.
+
+For CUDA code, you also need to have CUDA 7.0 installed in
+`/usr/local/cuda-7.0`.
 
 
 ### Classroom computers
@@ -107,12 +110,22 @@ Disable optimisations:
     make DEBUG=1
     make test
 
-Disable optimisations and enable address sanitizer
+Disable optimisations and enable AddressSanitizer
 (helps to catch many memory access errors):
 
     cd mf1
     make clean
     make DEBUG=2
+    make test
+
+Disable optimisations and enable AddressSanitizer
+and the C++ standard library debug mode (helps to
+catch e.g. out-of-bounds accesses with standard
+containers):
+
+    cd mf1
+    make clean
+    make DEBUG=3
     make test
 
 Disable modern CPU instructions:
@@ -125,6 +138,16 @@ Disable modern CPU instructions:
 You can also combine these, e.g., ARCH=1 DEBUG=1.
 
 Remember to run `make clean` afterwards.
+
+
+Advanced: CUDA debug builds
+---------------------------
+
+You can compile CUDA code with `make DEBUG=1` for debug builds.
+This will compile with `nvcc -g -G` so that you can easily debug
+your code with `cuda-gdb`.
+
+Sorry, `DEBUG=2` is not supported for CUDA code.
 
 
 Advanced: see the assembly code
