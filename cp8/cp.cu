@@ -3,8 +3,7 @@
 #include <cuda_runtime.h>
 #include<iostream>
 using namespace std;
-#define BLOCK_SIZE 10
-#define TILE_SIZE  2
+#define BLOCK_SIZE 5
 #define CHECK_CUDA_ERROR(call) do { \
         cudaError_t result_ = (call); \
         if (result_ != cudaSuccess) { \
@@ -13,17 +12,24 @@ using namespace std;
             exit(1); \
         } \
     } while(0)
-__global__ void var(double *input,double *output, int N, double mean)
+__global__ void normalize(float *input,double *output, int ny, int nx)
 	{
- 
-      int idx=threadIdx.x+(blockDim.x*blockIdx.x);
-      if (idx < N) output[idx] = (input[idx]-mean)*(input[idx]-mean);
-    }
-__global__ void norm(double *input, int N,double mean,double sd)
-	{
- 
-      int idx=threadIdx.x+(blockDim.x*blockIdx.x);
-      if (idx < N) input[idx] =  (input[idx]-mean)/sd;
+		double mean = 0.0;
+		double sd = 0.0;
+		int tx = threadIdx.x + (blockDim.x * blockIdx.x);
+		int ty = threadIdx.y + (blockDim.y * blockIdx.y);
+		int row = ty*nx;
+		if(tx>= nx || ty>=ny)
+			return;
+		output[ty * nx + tx] = input[ty * nx + tx];
+		for(int i=0;i<nx;i++)
+			mean+=input[row+i];
+		mean = mean/nx;
+		double temp=0.0;
+		for(int i=0;i<nx;i++)
+			temp+=((input[row+i]-mean)*(input[row+i]-mean));
+		sd = sqrt(temp);
+		output[ty * nx + tx] = (output[ty * nx + tx] - mean)/sd;
     }
 
 __global__ void matrixMul( float* C, double* A, int ny,int nx)
@@ -46,51 +52,18 @@ __global__ void matrixMul( float* C, double* A, int ny,int nx)
 void correlate(int ny, int nx, const float* data, float* result) 
 {
 	double* inter = new double[ny*nx];
-	for (int y = 0; y < ny; ++y) 
-	{
-		double *a_d_input;
-		double *a_h;
-		double *a_d_output;	
-		double mean = 0.0;
-		double sd = 0.0;
-		size_t size = nx * sizeof(double);
-		//Finding the mean
-		for (int x = 0; x < nx; ++x) 
-		{
-			inter[x + y*nx] = data[x + y*nx];
-			mean += inter[x + y*nx];
-			//cout<<data[x+y*nx];
-		}
-		mean = mean/nx;
-		//cout<<"Mean=="<<" "<<mean<<endl;
-		//Finding the Standard Deviation
-		a_h =  new double[nx];
-		CHECK_CUDA_ERROR(cudaMalloc((void **) &a_d_input, size)); 
-		CHECK_CUDA_ERROR(cudaMalloc((void **) &a_d_output, size)); 
-		CHECK_CUDA_ERROR(cudaMemcpy(a_d_input, &inter[y*nx], size, cudaMemcpyHostToDevice));
-		int block_size = 400;
-		int n_blocks = nx/block_size + (nx%block_size == 0 ? 0:1);
-		var<<< n_blocks, block_size >>> (a_d_input,a_d_output,nx,mean);
-		CHECK_CUDA_ERROR(cudaGetLastError());
-		CHECK_CUDA_ERROR(cudaMemcpy(a_h, a_d_output, size, cudaMemcpyDeviceToHost));
-		//cout<<"Inter"<<endl;
-		for (int x = 0; x < nx; ++x) 
-		{
-			sd += a_h[x];
-		}
-		//cout<<endl;
-		sd= sqrt(sd);
-		
-		//cudaMalloc((void **) &a_d, size); 
-		CHECK_CUDA_ERROR(cudaMemcpy(a_d_output, &inter[y*nx], size, cudaMemcpyHostToDevice));
-		norm<<< n_blocks, block_size >>> (a_d_output,nx,mean,sd);
-		CHECK_CUDA_ERROR(cudaGetLastError());
-		CHECK_CUDA_ERROR(cudaMemcpy(&inter[y*nx], a_d_output, size, cudaMemcpyDeviceToHost));
-		//cout<<"SD=="<<" "<<sd<<endl;
-		//Finding zero mean and unit variance
-		
-   	}
-	//cout<<"Done"<<endl;
+	float *a_d_input;
+	double *a_d_output;
+	CHECK_CUDA_ERROR(cudaMalloc((void **) &a_d_input, nx*ny*sizeof(float))); 
+	CHECK_CUDA_ERROR(cudaMalloc((void **) &a_d_output, nx*ny*sizeof(double))); 
+	CHECK_CUDA_ERROR(cudaMemcpy(a_d_input, data, nx*ny*sizeof(float), cudaMemcpyHostToDevice));
+	dim3 threads(BLOCK_SIZE,BLOCK_SIZE);
+	int nx_blocks = nx/BLOCK_SIZE + (nx%BLOCK_SIZE == 0 ? 0:1);
+	int ny_blocks = ny/BLOCK_SIZE + (ny%BLOCK_SIZE == 0 ? 0:1);
+   	dim3 grid(nx_blocks,ny_blocks);
+	normalize<<< grid, threads >>>(a_d_input, a_d_output, ny,nx);
+	CHECK_CUDA_ERROR(cudaGetLastError());
+	CHECK_CUDA_ERROR(cudaMemcpy(inter, a_d_output, nx*ny*sizeof(double), cudaMemcpyDeviceToHost));
 	double *d_A;
 	float *d_C;
 	size_t size = nx*ny*sizeof(double);
@@ -103,11 +76,9 @@ void correlate(int ny, int nx, const float* data, float* result)
 //	CHECK_CUDA_ERROR(cudaMalloc((void**) &d_B, size));
 	CHECK_CUDA_ERROR(cudaMalloc((void**) &d_C, ny*ny*sizeof(float)));
 	CHECK_CUDA_ERROR(cudaMemcpy(d_A, inter, size,cudaMemcpyHostToDevice));
-	dim3 threads(BLOCK_SIZE,BLOCK_SIZE);
-	int n_blocks = ny/BLOCK_SIZE + (ny%BLOCK_SIZE == 0 ? 0:1);
 	//cout<<n_blocks<<" "<< nx<<endl;
-   	dim3 grid(n_blocks,n_blocks);
- 	matrixMul<<< grid, threads >>>(d_C, d_A, ny,nx);
+   	dim3 grid_1(ny_blocks,ny_blocks);
+ 	matrixMul<<< grid_1, threads >>>(d_C, d_A, ny,nx);
 	CHECK_CUDA_ERROR(cudaGetLastError());
 	CHECK_CUDA_ERROR(cudaMemcpy(result, d_C, ny*ny*sizeof(float), cudaMemcpyDeviceToHost));
 	//cout<<endl;	
