@@ -32,6 +32,8 @@ __global__ void norm(float *input, int N,float mean,float sd)
 
 __global__ void matrixMultiply(float * A, float * C, int ny, int nx) 
 {
+	if(blockIdx.x < blockIdx.y)
+		return;
   __shared__ float ds_M[BLOCK_SIZE][BLOCK_SIZE];
   __shared__ float ds_N[BLOCK_SIZE][BLOCK_SIZE];
   int bx= blockIdx.x; 
@@ -133,13 +135,13 @@ void correlate(int ny, int nx, const float* data, float* result)
 	int n_blocks = ny/BLOCK_SIZE + (ny%BLOCK_SIZE == 0 ? 0:1);
    	dim3 grid(n_blocks,n_blocks);
 	high_resolution_clock::time_point t3 = high_resolution_clock::now();
-	duration = std::chrono::duration_cast<std::chrono::milliseconds>( t3 - t2 ).count();
+	duration = std::chrono::duration_cast<std::chrono::microseconds>( t3 - t2 ).count();
 	
 	matrixMultiply<<< grid, threads >>>(d_A, d_C,ny, nx);
 	CHECK_CUDA_ERROR(cudaGetLastError());
 	CHECK_CUDA_ERROR(cudaMemcpy(result, d_C, ny*ny*sizeof(float), cudaMemcpyDeviceToHost));
 	high_resolution_clock::time_point t4 = high_resolution_clock::now();
-	duration = std::chrono::duration_cast<std::chrono::milliseconds>( t4 - t3 ).count();
+	duration = std::chrono::duration_cast<std::chrono::microseconds>( t4 - t3 ).count();
 	cout << duration<<endl;
 	//cout<<endl;	
 	//for(int i =0;i< ny*ny;i++)
