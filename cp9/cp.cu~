@@ -29,41 +29,58 @@ __global__ void norm(float *input, int N,float mean,float sd)
       if (idx < N) input[idx] =  (input[idx]-mean)/sd;
     }
 
-
-__global__ void matrixMultiply(float * A, float * C, int ny, int nx) 
+__global__ void matrixMul( float* C, float* A, int ny,int nx)
 {
-  __shared__ float ds_M[BLOCK_SIZE][BLOCK_SIZE];
-  __shared__ float ds_N[BLOCK_SIZE][BLOCK_SIZE];
-  int bx= blockIdx.x; 
-  int by= blockIdx.y;
-  int tx= threadIdx.x; 
-  int ty= threadIdx.y;
-  int Row= by * BLOCK_SIZE + ty; 
-  int Col= bx * BLOCK_SIZE + tx; 
-  float Pvalue= 0;
-  int n_tiles = nx/BLOCK_SIZE + (nx%BLOCK_SIZE == 0 ? 0:1);
-  for (int m= 0; m < n_tiles; ++m) 
-  {
-    if (Row < ny && m*BLOCK_SIZE+tx < nx)
-      ds_M[ty][tx] = A[Row*nx + m*BLOCK_SIZE+tx];
-    else
-      ds_M[ty][tx] = 0;
- 
-    if (Col < ny && m*BLOCK_SIZE+ty < nx)
-      ds_N[ty][tx] = A[Col*nx + m*BLOCK_SIZE+ty];
-    else
-      ds_N[ty][tx] = 0;
- 
-    __syncthreads();
-	if(Col<Row)
-      continue;
-    for (int k = 0; k < BLOCK_SIZE; ++k)
-      Pvalue += ds_M[ty][k] * ds_N[k][tx];
-    __syncthreads();
-  }
-  if (Row < ny && Col < ny)
-    C[Row*ny+Col] = Pvalue;
+   int tx = threadIdx.x + (blockDim.x * blockIdx.x);
+   int ty = threadIdx.y + (blockDim.y * blockIdx.y);
+  
+   if(tx>= ny || ty>=ny)
+    return;
+   float value = 0;
+   for (int i = 0; i < nx; ++i)
+   {
+      float elementA = A[ty * nx + i];
+      float elementB = A[tx * nx + i];
+      value += elementA * elementB;
+   }
+    C[ty * ny + tx] = value;
 }
+
+
+__global__ void matrixMultiply(float * A, float * C,
+  		       int numARows, int numAColumns,
+		       int numCRows, int numCColumns,int n_blocks)
+ {
+    //@@ Insert code to implement matrix multiplication here
+    __shared__ float ds_M[BLOCK_SIZE][BLOCK_SIZE];
+    __shared__ float ds_N[BLOCK_SIZE][BLOCK_SIZE];
+    int bx = blockIdx.x, by = blockIdx.y,
+       tx = threadIdx.x, ty = threadIdx.y,
+       Row = by * BLOCK_SIZE + ty,
+       Col = bx * BLOCK_SIZE + tx;
+    float Pvalue = 0;
+ 
+    for (int m = 0; m < n_blocks; ++m) 
+    {
+       if (Row < numARows && m*BLOCK_SIZE+tx < numAColumns)
+          ds_M[ty][tx] = A[Row*numAColumns + m*BLOCK_SIZE+tx];
+       else
+          ds_M[ty][tx] = 0;
+	if (Col < numARows && m*BLOCK_SIZE+ty < numAColumns)
+          ds_N[ty][tx] = A[Col*numAColumns + m*BLOCK_SIZE+tx];
+       else
+          ds_N[ty][tx] = 0;
+	__syncthreads();
+       for (int k = 0; k < BLOCK_SIZE; ++k)
+          Pvalue += ds_M[ty][k] * ds_N[tx][k];
+       __syncthreads();
+       
+    }
+	
+    if (Row < numCRows && Col < numCColumns)
+       C[Row*numCColumns+Col] = Pvalue;
+}
+ 
  
 void correlate(int ny, int nx, const float* data, float* result) 
 {
@@ -131,16 +148,25 @@ void correlate(int ny, int nx, const float* data, float* result)
 	CHECK_CUDA_ERROR(cudaMemcpy(d_A, inter, size,cudaMemcpyHostToDevice));
 	dim3 threads(BLOCK_SIZE,BLOCK_SIZE);
 	int n_blocks = ny/BLOCK_SIZE + (ny%BLOCK_SIZE == 0 ? 0:1);
+	//cout<<n_blocks<<" "<< nx<<endl;
    	dim3 grid(n_blocks,n_blocks);
 	high_resolution_clock::time_point t3 = high_resolution_clock::now();
 	duration = std::chrono::duration_cast<std::chrono::milliseconds>( t3 - t2 ).count();
-	
-	matrixMultiply<<< grid, threads >>>(d_A, d_C,ny, nx);
+	//cout << duration<<endl;
+ 	matrixMul<<< grid, threads >>>(d_C, d_A, ny,nx);
+	CHECK_CUDA_ERROR(cudaMemcpy(result, d_C, ny*ny*sizeof(float), cudaMemcpyDeviceToHost));
+	for(int i =0;i< ny*ny;i++)
+		cout<< result[i]<<" ";	
+	cout<<endl;
+	matrixMultiply<<< grid, threads >>>(d_A, d_C,ny, nx, ny, ny,n_blocks);
 	CHECK_CUDA_ERROR(cudaGetLastError());
 	CHECK_CUDA_ERROR(cudaMemcpy(result, d_C, ny*ny*sizeof(float), cudaMemcpyDeviceToHost));
+	for(int i =0;i< ny*ny;i++)
+		cout<< result[i]<<" ";	
+	cout<<endl;
 	high_resolution_clock::time_point t4 = high_resolution_clock::now();
 	duration = std::chrono::duration_cast<std::chrono::milliseconds>( t4 - t3 ).count();
-	cout << duration<<endl;
+	//cout << duration<<endl;
 	//cout<<endl;	
 	//for(int i =0;i< ny*ny;i++)
 	//	cout<< result[i]<<" ";	
