@@ -142,7 +142,7 @@ void correlate(int ny, int nx, const float* data, float* result)
 	CHECK_CUDA_ERROR(cudaMemcpy(result, d_C, ny*ny*sizeof(float), cudaMemcpyDeviceToHost));
 	high_resolution_clock::time_point t4 = high_resolution_clock::now();
 	duration = std::chrono::duration_cast<std::chrono::microseconds>( t4 - t3 ).count();
-	cout << duration<<endl;
+	//cout << duration<<endl;
 	//cout<<endl;	
 	//for(int i =0;i< ny*ny;i++)
 	//	cout<< result[i]<<" ";	
